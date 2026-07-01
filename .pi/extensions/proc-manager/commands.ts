@@ -2,8 +2,10 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { jobDetail, jobLine, statusLabel } from "./format.js";
 import type { ProcManager } from "./manager.js";
+import type { CrashNotifyMode, ProcSettings } from "./types.js";
 
-const SUBCOMMANDS = ["list", "start", "logs", "stop", "restart", "stopall", "wait"] as const;
+const SUBCOMMANDS = ["list", "start", "logs", "stop", "restart", "stopall", "wait", "notify"] as const;
+const NOTIFY_MODES: CrashNotifyMode[] = ["interrupt", "next", "off"];
 
 const USAGE = [
 	"/proc list                       list background jobs",
@@ -13,9 +15,10 @@ const USAGE = [
 	"/proc restart <id>               restart a job with the same command",
 	"/proc stopall                    stop every job",
 	"/proc wait <id> [pattern]        wait for exit or a matching output line",
+	"/proc notify [interrupt|next|off]  get/set watched-job crash notifications",
 ].join("\n");
 
-export function registerCommands(pi: ExtensionAPI, manager: ProcManager): void {
+export function registerCommands(pi: ExtensionAPI, manager: ProcManager, settings: ProcSettings): void {
 	pi.registerCommand("proc", {
 		description: "Manage session-scoped background processes",
 		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
@@ -33,6 +36,14 @@ export function registerCommands(pi: ExtensionAPI, manager: ProcManager): void {
 					.list()
 					.filter((j) => j.id.startsWith(idPrefix))
 					.map((j) => ({ value: `${sub} ${j.id}`, label: jobLine(j) }));
+				return items.length > 0 ? items : null;
+			}
+			if (sub === "notify") {
+				const modePrefix = parts[parts.length - 1];
+				const items = NOTIFY_MODES.filter((m) => m.startsWith(modePrefix)).map((m) => ({
+					value: `notify ${m}`,
+					label: m,
+				}));
 				return items.length > 0 ? items : null;
 			}
 			return null;
@@ -57,6 +68,8 @@ export function registerCommands(pi: ExtensionAPI, manager: ProcManager): void {
 					return runStopAll(manager, ctx);
 				case "wait":
 					return runWait(manager, ctx, rest);
+				case "notify":
+					return runNotify(settings, ctx, rest);
 				default:
 					ctx.ui.notify(`Unknown subcommand '${sub}'.\n${USAGE}`, "warning");
 			}
@@ -116,6 +129,24 @@ async function runStop(manager: ProcManager, ctx: ExtensionCommandContext, rest:
 	await manager.stop(id, { signal: rest[1] as NodeJS.Signals | undefined });
 	const after = manager.get(id);
 	ctx.ui.notify(`Stopped ${id}: ${after ? statusLabel(after) : "gone"}.`, "info");
+}
+
+function runNotify(settings: ProcSettings, ctx: ExtensionCommandContext, rest: string[]): void {
+	const mode = rest[0]?.toLowerCase();
+	if (!mode) {
+		ctx.ui.notify(
+			`Crash notifications: ${settings.crashNotify}\n` +
+				"interrupt = wake agent now · next = wait for your next prompt · off = don't notify",
+			"info",
+		);
+		return;
+	}
+	if (!NOTIFY_MODES.includes(mode as CrashNotifyMode)) {
+		ctx.ui.notify(`Usage: /proc notify [${NOTIFY_MODES.join("|")}]`, "warning");
+		return;
+	}
+	settings.crashNotify = mode as CrashNotifyMode;
+	ctx.ui.notify(`Crash notifications set to '${mode}'.`, "info");
 }
 
 async function runRestart(manager: ProcManager, ctx: ExtensionCommandContext, rest: string[]): Promise<void> {

@@ -32,9 +32,15 @@ pi -e ./.pi/extensions/proc-manager/index.ts
 ### Watched jobs
 
 When a job started with `watch: true` exits unexpectedly (non-zero code or a
-signal we didn't send), the extension posts a follow-up message to the agent
-naming the job and suggesting `proc_logs` / `proc_restart`. Intentional stops
-via `proc_stop` do not trigger this.
+signal we didn't send), the extension notifies the agent, naming the job and
+suggesting `proc_logs` / `proc_restart`. Intentional stops via `proc_stop` do
+not trigger this.
+
+Delivery is controlled by `/proc notify` (session-scoped, default `interrupt`):
+
+- `interrupt` — wake the agent immediately (delivers a follow-up, triggers a turn)
+- `next` — attach the note to your next prompt (no unprompted turn / token spend)
+- `off` — don't notify the agent
 
 ## Manual command
 
@@ -48,6 +54,7 @@ via `proc_stop` do not trigger this.
 /proc restart <id>            restart a job with the same command
 /proc stopall                 stop every job
 /proc wait <id> [pattern]     wait for exit or a matching line (2m timeout)
+/proc notify [mode]           get/set crash notifications: interrupt|next|off
 ```
 
 Running jobs are also shown in a widget above the editor, and you get a

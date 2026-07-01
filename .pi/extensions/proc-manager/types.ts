@@ -2,6 +2,19 @@ import type { ChildProcess } from "node:child_process";
 
 export type JobStatus = "running" | "exited" | "killed";
 
+/**
+ * How a watched job's unexpected exit is reported to the agent:
+ * - "interrupt": deliver as a follow-up and wake the agent now (triggers a turn)
+ * - "next": queue the note for the user's next prompt (no unprompted turn)
+ * - "off": don't notify the agent at all
+ */
+export type CrashNotifyMode = "interrupt" | "next" | "off";
+
+/** Mutable, session-scoped settings shared across the extension. */
+export interface ProcSettings {
+	crashNotify: CrashNotifyMode;
+}
+
 /** A single background process tracked by the manager. */
 export interface Job {
 	/** Short, friendly id (e.g. "p1"). */

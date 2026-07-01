@@ -16,7 +16,7 @@ import { jobLine, statusLabel } from "./format.js";
 import { ProcManager } from "./manager.js";
 import { registerCommands } from "./commands.js";
 import { registerTools } from "./tools.js";
-import type { JobSummary } from "./types.js";
+import type { JobSummary, ProcSettings } from "./types.js";
 
 const WIDGET_ID = "proc-manager";
 
@@ -25,8 +25,11 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 	// until the first job starts, so it is safe to create at factory time.
 	const manager = new ProcManager();
 
+	// Session-scoped, mutable via `/proc notify`.
+	const settings: ProcSettings = { crashNotify: "interrupt" };
+
 	registerTools(pi, manager);
-	registerCommands(pi, manager);
+	registerCommands(pi, manager, settings);
 
 	let uiCtx: ExtensionContext | undefined;
 	// Last-resort synchronous kill if pi exits without emitting session_shutdown.
@@ -49,7 +52,10 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 	// then decide to inspect logs or restart. Delivered as a follow-up so it
 	// doesn't interrupt an in-progress turn.
 	const onCrash = (job: JobSummary) => {
+		if (settings.crashNotify === "off") return;
 		const label = job.name ? `${job.id} (${job.name})` : job.id;
+		// "interrupt" wakes the agent now; "next" waits for the user's next prompt.
+		const deliverAs = settings.crashNotify === "interrupt" ? "followUp" : "nextTurn";
 		pi.sendMessage(
 			{
 				customType: "proc-manager",
@@ -60,7 +66,7 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 				display: true,
 				details: { job },
 			},
-			{ deliverAs: "followUp", triggerTurn: true },
+			{ deliverAs, triggerTurn: deliverAs === "followUp" },
 		);
 	};
 
