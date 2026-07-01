@@ -25,6 +25,12 @@ export interface Job {
 	ring: string[];
 	/** The underlying child process handle. */
 	child: ChildProcess;
+	/** Environment overrides used to launch (preserved across restart). */
+	env?: Record<string, string>;
+	/** Notify the agent if this job exits unexpectedly. */
+	watch?: boolean;
+	/** Internal: set when we deliberately stop the job (suppresses crash). */
+	_stopping?: boolean;
 	/** Internal: whether the last ingested chunk ended on a line boundary. */
 	_lastLineComplete?: boolean;
 }
@@ -50,6 +56,8 @@ export interface StartOptions {
 	cwd: string;
 	name?: string;
 	env?: Record<string, string>;
+	/** Notify the agent if this job exits unexpectedly. */
+	watch?: boolean;
 }
 
 export interface LogOptions {

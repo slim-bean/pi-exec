@@ -40,8 +40,33 @@ await sleep(300);
 check("stop reaps the whole process group (grandchild dead)", !alive(childPid));
 check("job2 marked killed/exited", m.get(j2.id).status !== "running");
 
-// 3. killAllSync last-resort path
-const before = m.get(j1.id).pid;
+// 3. restart reuses the id and relaunches
+const j3 = m.start({ command: "echo boot; sleep 30", cwd: process.cwd(), name: "svc" });
+await m.wait(j3.id, { pattern: "boot", timeoutMs: 5000 });
+const oldPid = m.get(j3.id).pid;
+const restarted = await m.restart(j3.id);
+check("restart keeps id, new pid, running", restarted.id === j3.id && restarted.pid !== oldPid && restarted.status === "running");
+await sleep(200);
+check("old pid gone after restart", !alive(oldPid));
+
+// 4. watched crash emits a 'crash' event; intentional stop does not
+let crashed = null;
+m.on("crash", (job) => {
+	crashed = job;
+});
+const j4 = m.start({ command: "echo bye; exit 7", cwd: process.cwd(), watch: true });
+await m.wait(j4.id, { timeoutMs: 5000 });
+await sleep(100);
+check("watched non-zero exit emits crash", crashed?.id === j4.id && crashed.exitCode === 7);
+
+crashed = null;
+const j5 = m.start({ command: "sleep 30", cwd: process.cwd(), watch: true });
+await m.stop(j5.id);
+await sleep(200);
+check("intentional stop of watched job does NOT crash", crashed === null);
+
+// 5. killAllSync last-resort path
+const before = m.get(j3.id).pid;
 m.killAllSync();
 await sleep(300);
 check("killAllSync terminates remaining jobs", !alive(before));

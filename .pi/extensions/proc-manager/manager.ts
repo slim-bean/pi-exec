@@ -58,37 +58,67 @@ export class ProcManager extends EventEmitter {
 		if (this.disposed) throw new Error("ProcManager has been disposed");
 
 		const id = `p${++this.counter}`;
-		const logFile = join(this.ensureDir(), `${id}.log`);
-		const stream = createWriteStream(logFile, { flags: "a" });
-
-		const child: ChildProcess = spawn(opts.command, {
-			cwd: opts.cwd,
-			shell: true,
-			// Own process group so we can signal the whole tree via -pid.
-			detached: true,
-			stdio: ["ignore", "pipe", "pipe"],
-			env: { ...process.env, ...opts.env },
-		});
-		// Don't keep pi's event loop alive; we still hold the handle to kill it.
-		child.unref();
-
 		const job: Job = {
 			id,
 			name: opts.name,
 			command: opts.command,
 			cwd: opts.cwd,
-			pid: child.pid,
+			env: opts.env,
+			watch: opts.watch,
 			startedAt: Date.now(),
 			status: "running",
 			exitCode: null,
 			signal: null,
-			logFile,
+			logFile: join(this.ensureDir(), `${id}.log`),
 			ring: [],
-			child,
+			// Assigned synchronously by spawnJob below.
+			child: undefined as unknown as ChildProcess,
 		};
-
 		this.jobs.set(id, job);
-		this.streams.set(id, stream);
+		this.spawnJob(job);
+		this.emit("change");
+		return toSummary(job);
+	}
+
+	/**
+	 * Re-launch a job under its original id, preserving command, cwd, env, and
+	 * watch flag. Stops it first if still running.
+	 */
+	async restart(id: string): Promise<JobSummary | undefined> {
+		const job = this.jobs.get(id);
+		if (!job || this.disposed) return undefined;
+		if (job.status === "running") await this.stop(id);
+
+		this.note(job, `\n--- restart ${new Date().toISOString()} ---\n`);
+		job.startedAt = Date.now();
+		job.endedAt = undefined;
+		job.status = "running";
+		job.exitCode = null;
+		job.signal = null;
+		job.ring = [];
+		job._stopping = false;
+		job._lastLineComplete = undefined;
+		this.spawnJob(job);
+		this.emit("change");
+		return toSummary(job);
+	}
+
+	/** Spawn (or re-spawn) the OS process for a job and wire up its streams. */
+	private spawnJob(job: Job): void {
+		const stream = createWriteStream(job.logFile, { flags: "a" });
+		const child: ChildProcess = spawn(job.command, {
+			cwd: job.cwd,
+			shell: true,
+			// Own process group so we can signal the whole tree via -pid.
+			detached: true,
+			stdio: ["ignore", "pipe", "pipe"],
+			env: { ...process.env, ...job.env },
+		});
+		// Don't keep pi's event loop alive; we still hold the handle to kill it.
+		child.unref();
+		job.child = child;
+		job.pid = child.pid;
+		this.streams.set(job.id, stream);
 
 		const onData = (chunk: Buffer) => this.ingest(job, chunk.toString());
 		child.stdout?.on("data", onData);
@@ -99,9 +129,6 @@ export class ProcManager extends EventEmitter {
 			this.finalize(job, null, null);
 		});
 		child.on("exit", (code, signal) => this.finalize(job, code, signal));
-
-		this.emit("change");
-		return toSummary(job);
 	}
 
 	private ingest(job: Job, text: string): void {
@@ -134,7 +161,13 @@ export class ProcManager extends EventEmitter {
 			stream.end();
 			this.streams.delete(job.id);
 		}
-		this.emit("exit", toSummary(job));
+		const summary = toSummary(job);
+		this.emit("exit", summary);
+		// A crash is an unexpected exit we did not request: non-zero code or a
+		// terminating signal we didn't send via stop().
+		if (job.watch && !job._stopping && (job.status === "killed" || (job.exitCode ?? 0) !== 0)) {
+			this.emit("crash", summary);
+		}
 		this.emit("change");
 	}
 
@@ -174,6 +207,8 @@ export class ProcManager extends EventEmitter {
 		if (!job || job.status !== "running") return false;
 		const signal = opts.signal ?? "SIGTERM";
 		const graceMs = opts.graceMs ?? 3000;
+		// Mark as an intentional stop so finalize() doesn't report a crash.
+		job._stopping = true;
 
 		const exited = new Promise<void>((resolve) => {
 			if (job.status !== "running") return resolve();

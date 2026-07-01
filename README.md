@@ -22,11 +22,19 @@ pi -e ./.pi/extensions/proc-manager/index.ts
 
 | Tool | Purpose |
 |------|---------|
-| `proc_start` | Start a shell command in the background; returns a job id (`p1`, `p2`, …). |
-| `proc_list`  | List jobs with status, pid, and uptime. |
-| `proc_logs`  | Fetch captured stdout/stderr (`tail`, `grep` options). |
-| `proc_stop`  | SIGTERM the job's process group, escalating to SIGKILL. |
-| `proc_wait`  | Block until exit, an output line matches a pattern, or a timeout. |
+| `proc_start`   | Start a shell command in the background; returns a job id (`p1`, `p2`, …). Pass `watch: true` to be told if it dies unexpectedly. |
+| `proc_list`    | List jobs with status, pid, and uptime. |
+| `proc_logs`    | Fetch captured stdout/stderr (`tail`, `grep` options). |
+| `proc_stop`    | SIGTERM the job's process group, escalating to SIGKILL. |
+| `proc_restart` | Restart a job under the same id, reusing command/cwd/env/watch. |
+| `proc_wait`    | Block until exit, an output line matches a pattern, or a timeout. |
+
+### Watched jobs
+
+When a job started with `watch: true` exits unexpectedly (non-zero code or a
+signal we didn't send), the extension posts a follow-up message to the agent
+naming the job and suggesting `proc_logs` / `proc_restart`. Intentional stops
+via `proc_stop` do not trigger this.
 
 ## Manual command
 
@@ -37,6 +45,7 @@ pi -e ./.pi/extensions/proc-manager/index.ts
 /proc start <command>         start a background job
 /proc logs <id> [tail]        show job output (default last 40 lines)
 /proc stop <id> [signal]      stop a job
+/proc restart <id>            restart a job with the same command
 /proc stopall                 stop every job
 /proc wait <id> [pattern]     wait for exit or a matching line (2m timeout)
 ```

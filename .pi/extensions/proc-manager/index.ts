@@ -45,8 +45,28 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 		uiCtx.ui.notify(`${job.id} ${statusLabel(job)}`, level);
 	};
 
+	// Watched jobs that die unexpectedly proactively tell the agent, which can
+	// then decide to inspect logs or restart. Delivered as a follow-up so it
+	// doesn't interrupt an in-progress turn.
+	const onCrash = (job: JobSummary) => {
+		const label = job.name ? `${job.id} (${job.name})` : job.id;
+		pi.sendMessage(
+			{
+				customType: "proc-manager",
+				content:
+					`Watched background job ${label} ${statusLabel(job)} unexpectedly.\n` +
+					`Command: ${job.command}\n` +
+					`Use proc_logs("${job.id}") to inspect output, or proc_restart("${job.id}") to relaunch it.`,
+				display: true,
+				details: { job },
+			},
+			{ deliverAs: "followUp", triggerTurn: true },
+		);
+	};
+
 	manager.on("change", refreshWidget);
 	manager.on("exit", onExitEvent);
+	manager.on("crash", onCrash);
 
 	pi.on("session_start", (_event, ctx) => {
 		uiCtx = ctx;

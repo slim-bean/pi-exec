@@ -3,13 +3,14 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { jobDetail, jobLine, statusLabel } from "./format.js";
 import type { ProcManager } from "./manager.js";
 
-const SUBCOMMANDS = ["list", "start", "logs", "stop", "stopall", "wait"] as const;
+const SUBCOMMANDS = ["list", "start", "logs", "stop", "restart", "stopall", "wait"] as const;
 
 const USAGE = [
 	"/proc list                       list background jobs",
 	"/proc start <command>            start a background job",
 	"/proc logs <id> [tail]           show job output (optionally last N lines)",
 	"/proc stop <id> [signal]         stop a job (SIGTERM then SIGKILL)",
+	"/proc restart <id>               restart a job with the same command",
 	"/proc stopall                    stop every job",
 	"/proc wait <id> [pattern]        wait for exit or a matching output line",
 ].join("\n");
@@ -26,7 +27,7 @@ export function registerCommands(pi: ExtensionAPI, manager: ProcManager): void {
 			}
 			// Completing a job id for id-taking subcommands.
 			const sub = parts[0];
-			if (["logs", "stop", "wait"].includes(sub)) {
+			if (["logs", "stop", "restart", "wait"].includes(sub)) {
 				const idPrefix = parts[parts.length - 1];
 				const items = manager
 					.list()
@@ -50,6 +51,8 @@ export function registerCommands(pi: ExtensionAPI, manager: ProcManager): void {
 					return runLogs(manager, ctx, rest);
 				case "stop":
 					return runStop(manager, ctx, rest);
+				case "restart":
+					return runRestart(manager, ctx, rest);
 				case "stopall":
 					return runStopAll(manager, ctx);
 				case "wait":
@@ -113,6 +116,20 @@ async function runStop(manager: ProcManager, ctx: ExtensionCommandContext, rest:
 	await manager.stop(id, { signal: rest[1] as NodeJS.Signals | undefined });
 	const after = manager.get(id);
 	ctx.ui.notify(`Stopped ${id}: ${after ? statusLabel(after) : "gone"}.`, "info");
+}
+
+async function runRestart(manager: ProcManager, ctx: ExtensionCommandContext, rest: string[]): Promise<void> {
+	const id = rest[0];
+	if (!id) {
+		ctx.ui.notify("Usage: /proc restart <id>", "warning");
+		return;
+	}
+	if (!manager.get(id)) {
+		ctx.ui.notify(`No such job: ${id}`, "warning");
+		return;
+	}
+	const job = await manager.restart(id);
+	ctx.ui.notify(job ? `Restarted ${job.id} (pid ${job.pid ?? "?"}): ${job.command}` : `Could not restart ${id}.`, "info");
 }
 
 async function runStopAll(manager: ProcManager, ctx: ExtensionCommandContext): Promise<void> {

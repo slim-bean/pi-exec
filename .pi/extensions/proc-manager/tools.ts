@@ -30,14 +30,40 @@ export function registerTools(pi: ExtensionAPI, manager: ProcManager): void {
 			command: Type.String({ description: "Shell command to run in the background." }),
 			name: Type.Optional(Type.String({ description: "Optional friendly name for the job." })),
 			cwd: Type.Optional(Type.String({ description: "Working directory (defaults to the session cwd)." })),
+			watch: Type.Optional(
+				Type.Boolean({
+					description:
+						"If true, the agent is notified when this job exits unexpectedly (non-zero code or a signal). Good for servers/watchers that should stay up.",
+				}),
+			),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const job = manager.start({
 				command: params.command,
 				name: params.name,
 				cwd: params.cwd ?? ctx.cwd,
+				watch: params.watch,
 			});
-			return textResult(`Started ${job.id} (pid ${job.pid ?? "?"}): ${params.command}`, { job });
+			const watched = params.watch ? " [watched]" : "";
+			return textResult(`Started ${job.id} (pid ${job.pid ?? "?"})${watched}: ${params.command}`, { job });
+		},
+	});
+
+	pi.registerTool({
+		name: "proc_restart",
+		label: "Restart Process",
+		description:
+			"Restart a background job under the same id, reusing its command, cwd, env, and watch flag. Stops it first if still running.",
+		promptSnippet: "Restart a background job (stop then start with the same command)",
+		parameters: Type.Object({
+			id: Type.String({ description: "Job id, e.g. 'p1'." }),
+		}),
+		async execute(_id, params) {
+			const existing = manager.get(params.id);
+			if (!existing) return textResult(`No such job: ${params.id}`, { error: "not_found" });
+			const job = await manager.restart(params.id);
+			if (!job) return textResult(`Could not restart ${params.id}.`, { error: "restart_failed" });
+			return textResult(`Restarted ${job.id} (pid ${job.pid ?? "?"}): ${job.command}`, { job });
 		},
 	});
 
