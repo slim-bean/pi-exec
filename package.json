@@ -1,0 +1,14 @@
+{
+  "name": "pi-exec",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Session-scoped background process manager extension for pi",
+  "type": "module",
+  "pi": {
+    "extensions": ["./.pi/extensions/proc-manager/index.ts"]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
