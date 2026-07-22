@@ -35,10 +35,29 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 	// Last-resort synchronous kill if pi exits without emitting session_shutdown.
 	const onProcExit = () => manager.killAllSync();
 
+	// Ticks the widget once a second while jobs are running so uptimes advance.
+	// Only active during a session with a UI and at least one running job.
+	let ticker: ReturnType<typeof setInterval> | undefined;
+	const stopTicker = () => {
+		if (ticker) {
+			clearInterval(ticker);
+			ticker = undefined;
+		}
+	};
+
 	const refreshWidget = () => {
 		if (!uiCtx?.hasUI) return;
 		const running = manager.list().filter((j) => j.status === "running");
 		uiCtx.ui.setWidget(WIDGET_ID, running.map(jobLine));
+		if (running.length > 0) {
+			if (!ticker) {
+				ticker = setInterval(refreshWidget, 1000);
+				// Never keep the pi process alive just to animate uptimes.
+				ticker.unref?.();
+			}
+		} else {
+			stopTicker();
+		}
 	};
 
 	const onExitEvent = (job: JobSummary) => {
@@ -82,6 +101,7 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		process.off("exit", onProcExit);
+		stopTicker();
 		await manager.stopAll();
 		uiCtx?.ui.setWidget(WIDGET_ID, []);
 		uiCtx = undefined;
