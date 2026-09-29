@@ -27,8 +27,9 @@ manager. See `README.md` for user-facing docs.
 ## Verify changes
 
 ```bash
-node scripts/smoke.mjs   # spawn, capture, group-kill, killAllSync, cleanup
-npx tsc --noEmit         # types (uses node_modules symlinks to global pi)
+node scripts/smoke.mjs          # spawn, capture, group-kill, killAllSync, cleanup
+node scripts/widget-smoke.mjs   # UI attach/reconnect and ticker cleanup
+npx --yes --package typescript tsc --noEmit  # uses symlinks to global pi
 ```
 
 Always run `scripts/smoke.mjs` after touching `manager.ts` and confirm no

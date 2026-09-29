@@ -36,7 +36,8 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 	const onProcExit = () => manager.killAllSync();
 
 	// Ticks the widget once a second while jobs are running so uptimes advance.
-	// Only active during a session with a UI and at least one running job.
+	// Keep ticking while jobs run, even if the UI temporarily disconnects:
+	// reattachment need not emit a manager event to restore the widget.
 	let ticker: ReturnType<typeof setInterval> | undefined;
 	const stopTicker = () => {
 		if (ticker) {
@@ -46,9 +47,9 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 	};
 
 	const refreshWidget = () => {
-		if (!uiCtx?.hasUI) return;
+		if (!uiCtx) return;
 		const running = manager.list().filter((j) => j.status === "running");
-		uiCtx.ui.setWidget(WIDGET_ID, running.map(jobLine));
+		if (uiCtx.hasUI) uiCtx.ui.setWidget(WIDGET_ID, running.map(jobLine));
 		if (running.length > 0) {
 			if (!ticker) {
 				ticker = setInterval(refreshWidget, 1000);
@@ -101,9 +102,10 @@ export default function procManagerExtension(pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		process.off("exit", onProcExit);
+		const ctx = uiCtx;
+		uiCtx = undefined; // stopAll emits changes; don't let them restart the ticker.
 		stopTicker();
 		await manager.stopAll();
-		uiCtx?.ui.setWidget(WIDGET_ID, []);
-		uiCtx = undefined;
+		if (ctx?.hasUI) ctx.ui.setWidget(WIDGET_ID, []);
 	});
 }

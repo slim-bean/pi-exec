@@ -58,7 +58,8 @@ Delivery is controlled by `/proc notify` (session-scoped, default `interrupt`):
 ```
 
 Running jobs are also shown in a widget above the editor, and you get a
-notification when a job exits.
+notification when a job exits. The uptime refresh keeps ticking while jobs
+run, even without a UI, so the widget returns when the UI is reattached.
 
 ## Lifetime & safety
 
@@ -77,8 +78,9 @@ removed on shutdown; nothing is written into the repo.
 ## Development
 
 ```bash
-node scripts/smoke.mjs   # runtime test (spawn, capture, group-kill, cleanup)
-npx tsc --noEmit         # type check
+node scripts/smoke.mjs          # runtime test (spawn, capture, group-kill, cleanup)
+node scripts/widget-smoke.mjs   # UI attach/reconnect and ticker cleanup
+npx --yes --package typescript tsc --noEmit  # type check
 ```
 
 The `node_modules/` symlinks and `scripts/` exist only for local type-checking
